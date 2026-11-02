@@ -4,6 +4,15 @@ See all your Claude Code sessions on the BUSY Bar and approve their requests wit
 
 You need: a BUSY Bar, Claude Code, and a USB cable.
 
+> [!NOTE]
+> **What the installer does.** It installs Node.js if you don't have it (from nodejs.org, Homebrew or winget), installs this plugin with Claude Code's own `claude plugin install`, and sets up the bar over the USB cable: puts the app on it and saves this computer's address and a random password in the app's settings. On Windows it also opens port 8790 in the firewall, so the bar can reach your PC.
+>
+> **What runs afterwards.** A small local server on your computer receives events from Claude Code and shows them on the bar: project folder name, what Claude is doing (`Edit client.ts`), timers, and the command it asks permission for. It answers only your bar, and only with that password.
+>
+> **What it never does.** It doesn't send anything to the internet, and it doesn't touch your Claude login or API keys. From session logs it takes only the project folder and how full the context is.
+>
+> Read it first if you like: [install.sh](install.sh), [install.ps1](install.ps1), [the server](plugin/daemon). Or ask Claude Code to review them before you run anything.
+
 ## macOS
 
 1. Connect the bar to your Mac with the USB cable.
