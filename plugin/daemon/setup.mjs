@@ -50,13 +50,33 @@ export async function ensure({ port, version, configDir, restart = false }) {
     for (let i = 0; i < 20 && (await ping(port)); i++) await sleep(100);
   }
   mkdirSync(configDir, { recursive: true });
-  const log = openSync(path.join(configDir, "daemon.log"), "a");
-  spawn(process.execPath, [DAEMON], { detached: true, stdio: ["ignore", log, log], windowsHide: true }).unref();
+  const logFile = path.join(configDir, "daemon.log");
+  if (process.platform === "win32") {
+    startOnWindows(logFile);
+  } else {
+    const log = openSync(logFile, "a");
+    spawn(process.execPath, [DAEMON], { detached: true, stdio: ["ignore", log, log] }).unref();
+  }
   for (let i = 0; i < 30; i++) {
     await sleep(100);
     if ((await ping(port))?.version === version) return true;
   }
   return false;
+}
+
+/**
+ * Windows ends every process of a console, SSH or app session when it closes, detached ones too: they share its job
+ * object. A process WMI creates belongs to no job, so the daemon outlives whoever started it. It gets no console
+ * (hidden window, no stdout), so it writes its log itself.
+ */
+function startOnWindows(logFile) {
+  const commandLine = [process.execPath, DAEMON, "--log", logFile].map((part) => `"${part}"`).join(" ");
+  const script = [
+    "$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${commandLine.replace(/'/g, "''")}'; ProcessStartupInformation = $si }`,
+    "exit $r.ReturnValue",
+  ].join("; ");
+  spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true });
 }
 
 const say = (text) => console.log(text);
