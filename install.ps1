@@ -67,6 +67,8 @@ function Install-BusyBarClaude {
     if ($LASTEXITCODE -ne 0) { & $claude plugin marketplace update busybar *> $null }
     & $claude plugin install busybar@busybar | Out-Host
     if ($LASTEXITCODE -ne 0) { Fail 'Claude Code could not install the plugin.' }
+    # Installed before: install leaves the old version, update brings the new one.
+    & $claude plugin update busybar@busybar *> $null
     $daemon = Get-ChildItem "$env:USERPROFILE\.claude\plugins\cache\busybar\busybar\*\daemon\claude-bar-daemon.mjs" -ErrorAction SilentlyContinue |
       Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object FullName
   }

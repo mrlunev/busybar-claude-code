@@ -25,11 +25,12 @@
 // No dependencies; Node 20+.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { format } from "node:util";
 import { findBars } from "./mdns.mjs";
 import { codeVersion, ensure, setup, uninstall } from "./setup.mjs";
 
@@ -39,6 +40,13 @@ const option = (name, fallback) => {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback;
 };
 const flag = (name) => args.includes(name);
+
+// Started without a console (on Windows, see startOnWindows in setup.mjs), the daemon writes its log itself.
+const LOG_FILE = option("--log", null);
+if (LOG_FILE) {
+  const out = createWriteStream(LOG_FILE, { flags: "a" });
+  console.log = console.error = (...parts) => out.write(format(...parts) + "\n");
+}
 
 const CONFIG_DIR = path.join(os.homedir(), ".config", "busy-claude-bar");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");

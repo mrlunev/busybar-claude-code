@@ -59,6 +59,8 @@ main() {
     say "Installing the busybar plugin for Claude Code..."
     "$claude" plugin marketplace add "$REPO" </dev/null >/dev/null 2>&1 || "$claude" plugin marketplace update busybar </dev/null >/dev/null 2>&1
     "$claude" plugin install busybar@busybar </dev/null || fail "Claude Code could not install the plugin."
+    # Installed before: install leaves the old version, update brings the new one.
+    "$claude" plugin update busybar@busybar </dev/null >/dev/null 2>&1
     daemon=$(plugin_daemon)
   fi
   if [ -z "$daemon" ]; then
