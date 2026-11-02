@@ -44,6 +44,7 @@ Done. Unplug the cable and restart Claude Code.
 - The wheel scrolls through your sessions, **Start** opens one, **Back** goes back.
 - When Claude asks for permission, the bar blinks. Turn the wheel to pick **Yes** or **No**, then press **Start**.
 - Something wrong? The bar says what. Run the same command again to fix most of it.
+- Only sessions that run on this computer show up. Cloud sessions and sessions on a remote machine over SSH don't.
 
 ## Remove
 
