@@ -1,0 +1,11 @@
+{
+  "name": "busybar",
+  "displayName": "Claude Code on the bar",
+  "version": "0.1.0",
+  "description": "Shows every Claude Code session on this computer on a BUSY Bar, and lets you answer permission prompts with the bar's buttons.",
+  "author": {
+    "name": "BUSY"
+  },
+  "repository": "https://github.com/mrlunev/busybar-claude-code",
+  "keywords": ["busy-bar", "permissions", "hooks"]
+}

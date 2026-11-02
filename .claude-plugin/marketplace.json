@@ -1,0 +1,15 @@
+{
+  "name": "busybar",
+  "description": "BUSY Bar apps that work with Claude Code",
+  "owner": {
+    "name": "mrlunev",
+    "url": "https://github.com/mrlunev"
+  },
+  "plugins": [
+    {
+      "name": "busybar",
+      "source": "./plugin",
+      "description": "All Claude Code sessions on your BUSY Bar; answer permission prompts with the bar's buttons."
+    }
+  ]
+}
