@@ -1,7 +1,7 @@
 {
   "name": "busybar",
   "displayName": "Claude Code on the bar",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shows every Claude Code session on this computer on a BUSY Bar, and lets you answer permission prompts with the bar's buttons.",
   "author": {
     "name": "BUSY"
