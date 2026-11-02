@@ -7,5 +7,10 @@
     "name": "BUSY"
   },
   "repository": "https://github.com/mrlunev/busybar-claude-code",
-  "keywords": ["busy-bar", "permissions", "hooks"]
+  "keywords": [
+    "busy-bar",
+    "permissions",
+    "hooks"
+  ],
+  "license": "MIT"
 }
