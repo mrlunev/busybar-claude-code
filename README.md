@@ -1,5 +1,7 @@
 # Claude Code on the BUSY Bar
 
+![Claude Code sessions on the BUSY Bar: a permission prompt answered with the bar's Start button](media/demo.webp)
+
 See all your Claude Code sessions on the BUSY Bar and approve their requests with the bar's buttons.
 
 You need: a BUSY Bar, Claude Code, and a USB cable.
