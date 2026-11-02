@@ -33,14 +33,17 @@ function Install-BusyBarClaude {
   function Install-Node {
     Say 'Installing Node.js. If Windows asks to allow changes, click Yes.'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-      winget install --exact --id OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements | Out-Host
-    } else {
-      $sums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$NodeLine/SHASUMS256.txt").Content
-      $name = ($sums -split "`n" | Where-Object { $_ -match 'x64\.msi$' } | Select-Object -First 1).Split(' ')[-1].Trim()
-      $msi = Join-Path $env:TEMP $name
-      Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$NodeLine/$name" -OutFile $msi
-      Start-Process msiexec -ArgumentList "/i `"$msi`" /qn" -Verb RunAs -Wait
+      # --source winget: with the Microsoft Store source unreachable, winget otherwise refuses to pick a package.
+      winget install --exact --id OpenJS.NodeJS.LTS --source winget --silent --accept-source-agreements --accept-package-agreements | Out-Host
+      Update-Path
     }
+    if (Test-Node) { return }
+    # No winget, or it failed: the official installer from nodejs.org.
+    $sums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$NodeLine/SHASUMS256.txt").Content
+    $name = ($sums -split "`n" | Where-Object { $_ -match 'x64\.msi$' } | Select-Object -First 1).Split(' ')[-1].Trim()
+    $msi = Join-Path $env:TEMP $name
+    Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$NodeLine/$name" -OutFile $msi
+    Start-Process msiexec -ArgumentList "/i `"$msi`" /qn" -Verb RunAs -Wait
     Update-Path
   }
 
