@@ -15,6 +15,13 @@ You need: a BUSY Bar, Claude Code, and a USB cable.
 >
 > Read it first if you like: [install.sh](install.sh), [install.ps1](install.ps1), [the server](plugin/daemon). Or ask Claude Code to review them before you run anything.
 
+## How to use
+
+- **Start**: opens a session; on a prompt, sends the answer.
+- **Wheel turn**: moves through the sessions; on a permission prompt, picks Yes or No.
+- **Wheel press**: opens a session; on a prompt, sends the answer.
+- **Back**: returns to the list; on a prompt, hands it back to the terminal; from the list, closes the app.
+
 ## macOS
 
 1. Connect the bar to your Mac with the USB cable.
