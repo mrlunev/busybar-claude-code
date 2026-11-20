@@ -46,6 +46,29 @@ Done. Unplug the cable and restart Claude Code.
 - Something wrong? The bar says what. Run the same command again to fix most of it.
 - Only sessions that run on this computer show up. Cloud sessions and sessions on a remote machine over SSH don't.
 
+## FAQ
+
+Almost everything is fixed the same way: connect the bar with the USB cable and run the install command for your
+system again (or `/busybar:setup` in Claude Code). It keeps what already works and fixes the rest.
+
+**The bar says "Wrong token" or "Not paired".** The bar and the computer no longer share the same password. That
+happens when setup ran on another computer since, or this computer lost its settings (`~/.config/busy-claude-bar`).
+Run setup again.
+
+**A new computer.** Install on it as above. The bar works with one computer at a time, the last one set up. To go back
+to the old computer, run setup there again.
+
+**The bar says "Run setup".** The app on the bar has no password yet, for example when it was installed from the BUSY
+Apps catalog. Run setup.
+
+**The bar says "No computer".** The bar can't reach the computer: it is asleep or off, Claude Code hasn't started since
+the computer restarted (the server starts with Claude Code), or the bar and the computer are on different Wi-Fi
+networks. Start Claude Code. If the bar still says it, run setup with the cable: it says what is in the way.
+
+**The bar says "Update app".** The plugin was updated and the app on the bar is older. Run setup.
+
+**Still stuck?** [Open an issue](https://github.com/mrlunev/busybar-claude-code/issues) and say what the bar shows.
+
 ## Remove
 
 Run `/plugin uninstall busybar` in Claude Code, then delete the app on the bar in the BUSY app.
