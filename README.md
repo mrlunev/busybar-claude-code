@@ -49,3 +49,12 @@ Done. Unplug the cable and restart Claude Code.
 ## Remove
 
 Run `/plugin uninstall busybar` in Claude Code, then delete the app on the bar in the BUSY app.
+
+## Source
+
+- [`app/`](app): the app for the bar (TypeScript, built with `busy-cli build`); see its [README](app/README.md).
+- [`plugin/`](plugin): the Claude Code plugin with the local server; `plugin/release/` holds the built app that setup puts on the bar.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Claude and Claude Code are trademarks of Anthropic, PBC. This project is not made by or affiliated with Anthropic.

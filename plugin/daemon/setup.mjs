@@ -12,10 +12,12 @@ import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, wr
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { barInfo, installApp, launchApp, setAppSettings } from "./bar-api.mjs";
+import { barInfo, installApp, launchApp, removeApp, setAppSettings, stopApp } from "./bar-api.mjs";
 import { findBars } from "./mdns.mjs";
 
-const APP_ID = "app.busy.claude_code";
+const APP_ID = "app.mrlunev.claude_code";
+/** The id the app had before it went into the BUSY Apps catalog; setup takes that copy off the bar. */
+const OLD_APP_ID = "app.busy.claude_code";
 /** Over the USB cable the bar and the computer always have these addresses. */
 const USB_BAR = "10.0.4.20";
 const USB_COMPUTER = "10.0.4.21";
@@ -173,6 +175,13 @@ export async function setup({ port, version, config, saveConfig, paths }) {
     say(`Could not install the app: ${err.message}`);
     if (/404/.test(err.message)) say("This bar's firmware has no apps yet. Update it to 1.3.1 or newer in the BUSY app.");
     return 1;
+  }
+  // A bar set up before the app moved to its catalog id still has the old copy: two apps would show in APPS.
+  try {
+    await stopApp(address, OLD_APP_ID);
+    if (await removeApp(address, OLD_APP_ID)) say("Removed the app's earlier version from the bar.");
+  } catch (err) {
+    say(`Could not remove the app's earlier version (${err.message}); delete "Claude Code" with the old icon in the BUSY app.`);
   }
   // The app reads its settings only when it starts, so it is launched after they are written.
   await setAppSettings(address, APP_ID, { host: hosts.map((h) => `${h}:${port}`).join(","), token: config.token });

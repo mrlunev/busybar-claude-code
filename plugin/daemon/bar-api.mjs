@@ -114,6 +114,17 @@ export async function stopApp(address, appId, { token } = {}) {
   return quit(address, token);
 }
 
+/** Deletes an installed app, keeping its settings. Returns true if it was there, false if the bar had no such app. */
+export async function removeApp(address, appId, { token } = {}) {
+  try {
+    await call(address, "DELETE", "/api/apps", { token, query: { app_id: appId }, timeoutMs: APP_MS });
+    return true;
+  } catch (err) {
+    if (err.status === 404) return false;
+    throw err;
+  }
+}
+
 /** The app's current settings values, e.g. { host, token, context_bar }; defaults until something was saved. */
 export async function appSettings(address, appId, { token } = {}) {
   const doc = await settingsDocument(address, appId, token);
@@ -164,6 +175,7 @@ const MEANINGS = {
   "/api/apps/install": { 400: "the bar did not install the app; quit the running app and try again" },
   "/api/apps/launch": { 400: "invalid app id", 404: "the app is not installed", 503: "the bar failed to launch the app" },
   "/api/apps/settings": { 400: "invalid settings", 404: "the app is not installed or has no settings" },
+  "/api/apps": { 503: "the bar could not quit the app to delete it" },
 };
 
 /** One request to the bar; resolves to the parsed JSON body (or text). Throws Error with .status on HTTP errors. */
