@@ -13,7 +13,7 @@
     "token": {
       "type": "string",
       "label": "Token",
-      "description": "Filled in by the setup command on your computer and must match its token. Wrong token, or a new computer? FAQ: https://github.com/mrlunev/busybar-claude-code#faq",
+      "description": "Filled in by the setup command on your computer and must match its token. FAQ: https://github.com/mrlunev/busybar-claude-code#faq",
       "default": "",
       "max_length": 64,
       "sensitive": true
