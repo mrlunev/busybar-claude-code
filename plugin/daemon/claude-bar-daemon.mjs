@@ -237,10 +237,18 @@ function setState(s, state, doing) {
 }
 
 /** Printable ASCII only: the bar's fonts have nothing else. */
-function ascii(text) {
+/**
+ * Letters the bar's fonts lack, mapped to the nearest ones they have. Checked on firmware 1.4.1: both fonts draw
+ * ASCII, the Russian alphabet with Ё, and « » — … “ ”; Latin letters with accents, other Cyrillic letters, CJK and
+ * emoji come out as empty boxes.
+ */
+const NEAREST = { І: "I", і: "i", Ї: "I", ї: "i", Є: "E", є: "e", Ґ: "Г", ґ: "г", Ў: "У", ў: "у", "–": "—", "‘": "'", "’": "'", "„": "\"", "‹": "<", "›": ">" };
+
+/** Text the bar can draw: one line, and "?" for any character its fonts lack. */
+function barText(text) {
   return String(text)
     .replace(/\s+/g, " ")
-    .replace(/[^\x20-\x7e]/g, "?")
+    .replace(/[^\x20-\x7eА-яЁё«»—…“”]/gu, (c) => NEAREST[c] ?? "?")
     .trim();
 }
 
@@ -278,10 +286,10 @@ function describeTool(name, input = {}) {
         return "";
     }
   })();
-  return ascii(target ? `${tool} ${target}` : tool);
+  return barText(target ? `${tool} ${target}` : tool);
 }
 
-const project = (s) => ascii(base(s.cwd) || "claude");
+const project = (s) => barText(base(s.cwd) || "claude");
 
 /** Tools that wait for the person's words, not for a yes or no: the bar only says the session needs them. */
 const ASKS_PERSON = new Set(["AskUserQuestion", "ExitPlanMode"]);
@@ -296,7 +304,7 @@ const DESKTOP_WRAP_UP = "mcp__ccd_turn__wrap_up";
 function question(name, input = {}) {
   if (name === "ExitPlanMode") return "Plan ready";
   const asked = name === "AskUserQuestion" ? input.questions?.[0]?.question : input.ask;
-  return typeof asked === "string" && asked.trim() ? ascii(asked).slice(0, PROMPT_TEXT_MAX) : "Question";
+  return typeof asked === "string" && asked.trim() ? barText(asked).slice(0, PROMPT_TEXT_MAX) : "Question";
 }
 
 /** Handles one hook event. Returns the hook's JSON answer, or a promise of it for a held permission prompt. */
@@ -375,7 +383,7 @@ function holdPrompt(s, input, { text, holdS = HOLD_S } = {}) {
       session: s.id,
       project: project(s),
       tool: describeTool(input.tool_name),
-      text: ascii(text ?? `${project(s)}: ${describeTool(input.tool_name, input.tool_input)}`).slice(0, PROMPT_TEXT_MAX),
+      text: barText(text ?? `${project(s)}: ${describeTool(input.tool_name, input.tool_input)}`).slice(0, PROMPT_TEXT_MAX),
       resolvers: [resolve],
       timer: setTimeout(() => answerPrompt(prompt.id, "dismiss"), holdS * 1000),
     };
