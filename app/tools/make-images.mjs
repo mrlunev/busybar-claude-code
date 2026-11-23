@@ -113,7 +113,7 @@ function background({ border, fill, dim }) {
 /**
  * @typedef {object} Pose
  * @property {number} [dy] whole body up (negative) or down, pixels
- * @property {"open" | "closed" | "left" | "right" | "up"} [eyes]
+ * @property {"open" | "closed" | "left" | "right" | "up" | "dead"} [eyes]
  * @property {[number, number]} [arms] how high each arm is raised, pixels (left, right)
  * @property {[number, number, number, number]} [legs] how far each leg is pulled in, pixels (0 full, 1 half)
  * @property {number} [dots] thought dots over the head, 0-3
@@ -137,8 +137,13 @@ function mascotPixels({ eyes = "open", arms = [0, 0], legs = [0, 0, 0, 0] } = {}
   const on = new Set();
   const put = (x, y) => on.add(`${x},${y}`);
   for (let y = 0; y <= 8; y++) for (let x = 2; x <= 11; x++) put(x, y);
-  const eye = EYES[eyes];
-  for (const y of eye.rows) for (const x of [4, 5, 8, 9]) on.delete(`${x + eye.dx},${y}`);
+  if (eyes === "dead") {
+    // Crosses, 3x3 each (columns 3-5 and 8-10), when nothing on the computer answers yet.
+    for (const cx of [4, 9]) for (const [dx, dy] of [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]]) on.delete(`${cx + dx},${3 + dy}`);
+  } else {
+    const eye = EYES[eyes];
+    for (const y of eye.rows) for (const x of [4, 5, 8, 9]) on.delete(`${x + eye.dx},${y}`);
+  }
   for (const y of [4, 5]) {
     for (const x of [0, 1]) put(x, y - arms[0]);
     for (const x of [12, 13]) put(x, y - arms[1]);
@@ -257,15 +262,16 @@ function marchingBorder() {
 }
 
 /** A still mascot, cut to its own 14x11 box. */
-function still(colors) {
+function still(colors, pose = {}) {
   const pixels = Buffer.alloc(14 * 11 * 4);
-  for (const [x, y] of mascotPixels()) pixels.set([...mix(colors[0], colors[1], y / 10), 255], (y * 14 + x) * 4);
+  for (const [x, y] of mascotPixels(pose)) pixels.set([...mix(colors[0], colors[1], y / 10), 255], (y * 14 + x) * 4);
   return png(14, 11, 4, pixels);
 }
 
 for (const [name, style] of Object.entries(STATES)) save(`images/bg_${name}.png`, background(style));
 // Working and calling frames show the animations instead.
 for (const name of ["done", "idle"]) save(`images/icon_${name}.png`, still(STATES[name].icon));
+save("images/icon_dead.png", still(STATES.idle.icon, { eyes: "dead" }));
 for (const [name, colors] of Object.entries(LIST_ICONS)) save(`images/list_${name}.png`, icon(SMALL, 4, colors));
 animation("thinking", THINKING, 10, ORANGE);
 animation("calling", CALLING, 12, ORANGE);

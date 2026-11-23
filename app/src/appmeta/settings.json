@@ -5,7 +5,7 @@
     "host": {
       "type": "string",
       "label": "Computer",
-      "description": "Filled in by the setup command on your computer. One or more address:port entries, comma-separated (e.g. Wi-Fi, then USB 10.0.4.21:8790); the bar uses the first that answers.",
+      "description": "Filled in automatically by the installer. One or more address:port entries, comma-separated; the bar uses the first that answers.",
       "default": "10.0.4.21:8790",
       "min_length": 1,
       "max_length": 128
@@ -13,7 +13,7 @@
     "token": {
       "type": "string",
       "label": "Token",
-      "description": "Filled in by the setup command on your computer and must match its token. FAQ: https://github.com/mrlunev/busybar-claude-code#faq",
+      "description": "Filled in automatically by the installer and must match the computer's.",
       "default": "",
       "max_length": 64,
       "sensitive": true
@@ -23,6 +23,27 @@
       "label": "Context bar",
       "description": "A thin line along the bottom that shows how full the session's context window is.",
       "default": false
+    },
+    "install": {
+      "type": "group",
+      "label": "Install",
+      "description": "FAQ: github.com/mrlunev/busybar-claude-code",
+      "fields": {
+        "mac": {
+          "type": "string",
+          "label": "Install on Mac",
+          "description": "Connect the bar by USB, then paste into Terminal.",
+          "default": "curl -fsSL https://raw.githubusercontent.com/mrlunev/busybar-claude-code/main/install.sh | bash",
+          "max_length": 255
+        },
+        "windows": {
+          "type": "string",
+          "label": "Install on Windows",
+          "description": "Connect the bar by USB, then paste into PowerShell.",
+          "default": "irm https://raw.githubusercontent.com/mrlunev/busybar-claude-code/main/install.ps1 | iex",
+          "max_length": 255
+        }
+      }
     }
   }
 }

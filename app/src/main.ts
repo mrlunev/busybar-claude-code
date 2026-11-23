@@ -1,4 +1,5 @@
-import { device } from "@shared/device";
+import { BASE, device } from "@shared/device";
+import { helpElements, type WebAddress, webAddresses } from "./help.ts";
 import manifest from "./appmeta/manifest.json";
 
 /** The name the app draws under; the device clears elements by this id. */
@@ -18,6 +19,8 @@ const NEXT_HOST_MS = 200;
 const TOO_NEW_RETRY_MS = 30000;
 /** Failures in a row before the screen says the computer is gone; shorter hiccups keep the last picture. */
 const STALE_AFTER = 3;
+/** How often the bar's own addresses are looked up again while the back screen shows where to open its web page. */
+const HELP_MS = 10000;
 
 /** Text starts right of the mascot, as in the mockup; the glyphs land on rows 2-7 and 9-13. */
 const TEXT_X = 18;
@@ -246,6 +249,20 @@ function messageScreen(line1: string, line2: string): Element[] {
   return [...frame("idle"), text("line1", line1, TEXT_X, LINE_1_Y, GREY), text("line2", line2, TEXT_X, LINE_2_Y, DIM, { width: TEXT_WIDTH, ...SCROLL })];
 }
 
+/**
+ * Nothing set up on the computer yet (installed from the catalog): the mascot lies dead, the front says to look at
+ * the back, and the back says where to open the bar's web page; the app's settings there hold the guide.
+ */
+function setupScreen(back: Element[]): Element[] {
+  return [
+    { ...image("bg", "images/bg_idle.png", 0, 0), z_index: 0 },
+    { id: "mascot", type: "image", path: "images/icon_dead.png", x: 2, y: 3, z_index: 1 },
+    text("line1", "Needs setup", TEXT_X, LINE_1_Y, GREY, { width: TEXT_WIDTH, ...SCROLL }),
+    text("line2", "look at the back", TEXT_X, LINE_2_Y, DIM, { width: TEXT_WIDTH, ...SCROLL }),
+    ...back,
+  ];
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 
 /** What is on the screen now, by element id, to send only what changed. */
@@ -359,7 +376,7 @@ function main(): void {
   const activePrompt = (): Prompt | null => (model?.prompt && !handled.has(model.prompt.id) ? model.prompt : null);
 
   function screen(): { elements: Element[]; led: string | null } {
-    if (settings.token === "") return { elements: messageScreen("Run setup", "on your computer"), led: null };
+    if (settings.token === "") return { elements: setupScreen(help.elements), led: null };
     if (tooNew) return { elements: messageScreen("Update app", "run setup"), led: null };
     if (model === null) {
       if (refused === "token") return { elements: messageScreen("Wrong token", "run setup again"), led: null };
@@ -521,7 +538,24 @@ function main(): void {
     void render();
   });
 
-  const recheck = setInterval(() => void render(), TICK_MS);
+  /** The back screen's guide while nothing is set up; built again only when the bar's addresses change. */
+  const help: { key: string; at: number; elements: Element[] } = { key: "", at: 0, elements: [] };
+  /** Looks up where the bar's web page opens: a cable may come, Wi-Fi may join. */
+  async function refreshHelp(): Promise<void> {
+    if (settings.token !== "" || Date.now() - help.at < HELP_MS) return;
+    help.at = Date.now();
+    const addresses: WebAddress[] = await webAddresses(BASE);
+    const key = JSON.stringify(addresses);
+    if (key === help.key) return;
+    help.key = key;
+    help.elements = helpElements(addresses) as unknown as Element[];
+    void render();
+  }
+
+  const recheck = setInterval(() => {
+    void render();
+    refreshHelp().catch(report);
+  }, TICK_MS);
 
   void (async () => {
     try {
@@ -531,6 +565,7 @@ function main(): void {
       report(err);
     }
     settings = await loadSettings();
+    await refreshHelp();
     await render();
     if (settings.token !== "") await poll();
   })().catch(report);

@@ -7,7 +7,7 @@
  * `Response.clone()`, which the firmware lacks, so every refusal turns into the same TypeError.
  */
 
-const BASE = `${__BUSY_ADDR__.indexOf("://") >= 0 ? __BUSY_ADDR__ : `http://${__BUSY_ADDR__}`}/api/`;
+export const BASE = `${__BUSY_ADDR__.indexOf("://") >= 0 ? __BUSY_ADDR__ : `http://${__BUSY_ADDR__}`}/api/`;
 
 async function call(method: string, path: string, body?: unknown): Promise<string> {
   // The firmware's fetch rejects `headers: undefined`, so the keys are only set when there is a body.
