@@ -21,6 +21,12 @@ const TOO_NEW_RETRY_MS = 30000;
 const STALE_AFTER = 3;
 /** How often the bar's own addresses are looked up again while the back screen shows where to open its web page. */
 const HELP_MS = 10000;
+/** A prompt takes no answer until it has been on the screen this long: a press meant for the screen before must not answer it. */
+const ANSWER_AFTER_MS = 400;
+/** On 1.3.1 the firmware's clear after a short Back can land after our redraw, so everything is drawn once more. */
+const BACK_REDRAW_MS = 300;
+/** The daemon's clock comes in whole seconds; a smaller change of the offset is that rounding, not a new clock. */
+const OFFSET_SLACK = 2;
 
 /** Text starts right of the mascot, as in the mockup; the glyphs land on rows 2-7 and 9-13. */
 const TEXT_X = 18;
@@ -39,7 +45,6 @@ const LIST_ROWS = 2;
 const LIST_ROW_HEIGHT = 8;
 const LIST_NAME_X = 11;
 const LIST_TEXT_RIGHT = 69;
-const LIST_NAME_WIDTH = LIST_TEXT_RIGHT - TIMER_WIDTH.short - NAME_GAP - LIST_NAME_X;
 const CURSOR = "#2E313DFF";
 /**
  * Screens are rebuilt this often even without news: the name moves when a timer passes an hour, and the LED
@@ -86,7 +91,7 @@ type Session = {
   id: string;
   name: string;
   state: SessionState;
-  /** Unix seconds, Mac clock: when the task started, or since when the session waits. */
+  /** Unix seconds, the computer's clock: when the task started, or since when the session waits. */
   since: number;
   doing: string;
   /** Context window use, percent; null until known. */
@@ -95,7 +100,7 @@ type Session = {
   took: number | null;
 };
 
-type Prompt = { id: number; text: string; project: string; queue: number };
+type Prompt = { id: number; text: string; queue: number };
 
 type Model = { v: number; now: number; prompt: Prompt | null; sessions: Session[]; api?: number };
 
@@ -118,7 +123,7 @@ function frame(look: Look): Element[] {
   return [{ ...image("bg", `images/bg_${look}.png`, 0, 0), z_index: 0 }, MASCOT[look]];
 }
 
-/** Counts up from `since` on the bar itself, so a running timer needs no redraws. `offset` maps Mac time to bar time. */
+/** Counts up from `since` on the bar itself, so a running timer needs no redraws. `offset` maps the computer's time to bar time. */
 function timer(since: number, offset: number, color: string): Element {
   return {
     id: "timer",
@@ -158,6 +163,9 @@ function clock(id: string, s: Session, offset: number, color: string, place: Rec
   return { element: { ...timer(s.since, offset, color), id, ...place }, seconds: Date.now() / 1000 + offset - s.since };
 }
 
+/** The clock grows by an hours field after the first hour. */
+const clockWidth = (seconds: number) => (seconds >= 3600 ? TIMER_WIDTH.hours : TIMER_WIDTH.short);
+
 const STATE_LINE: Record<SessionState, (s: Session) => string> = {
   working: (s) => s.doing || "Working",
   input: (s) => s.doing || "Needs you",
@@ -167,9 +175,9 @@ const STATE_LINE: Record<SessionState, (s: Session) => string> = {
 
 function sessionScreen(s: Session, offset: number, contextBar: boolean): Element[] {
   const look = LOOK[s.state];
-  // The name sits right after the time, which grows by an hours field after the first hour.
+  // The name sits right after the time.
   const time = clock("timer", s, offset, TINT[look].timer, {});
-  const nameX = time.element === null ? TEXT_X : TEXT_X + (time.seconds >= 3600 ? TIMER_WIDTH.hours : TIMER_WIDTH.short) + NAME_GAP;
+  const nameX = time.element === null ? TEXT_X : TEXT_X + clockWidth(time.seconds) + NAME_GAP;
   const elements = [
     ...frame(look),
     text("line1", STATE_LINE[s.state](s), TEXT_X, LINE_1_Y, WHITE, { width: TEXT_WIDTH, ...SCROLL }),
@@ -201,10 +209,12 @@ function listScreen(sessions: Session[], cursor: number, top: number, offset: nu
       elements.push({ id: "cursor", type: "rectangle", x: 0, y, width: LIST_TEXT_RIGHT + 1, height: LIST_ROW_HEIGHT, radius: 1, fill: "solid", fill_colors: [CURSOR], border_width: 0, z_index: 0 });
     }
     elements.push({ ...image(`row${row}_icon`, `images/list_${look}.png`, 1, y), z_index: 1 });
-    const name = selected ? { width: LIST_NAME_WIDTH, ...SCROLL } : {};
-    const shown = selected ? s.name : s.name.slice(0, Math.floor(LIST_NAME_WIDTH / NAME_CHAR_WIDTH));
-    elements.push(text(`row${row}_name`, shown, LIST_NAME_X, y, selected ? WHITE : GREY, name));
+    // The name ends before this row's time.
     const time = clock(`row${row}_timer`, s, offset, TINT[look].timer, { x: LIST_TEXT_RIGHT, y, align: "top_right" });
+    const width = LIST_TEXT_RIGHT - LIST_NAME_X - (time.element === null ? 0 : clockWidth(time.seconds) + NAME_GAP);
+    const name = selected ? { width, ...SCROLL } : {};
+    const shown = selected ? s.name : s.name.slice(0, Math.floor(width / NAME_CHAR_WIDTH));
+    elements.push(text(`row${row}_name`, shown, LIST_NAME_X, y, selected ? WHITE : GREY, name));
     if (time.element) elements.push(time.element);
   }
   if (sessions.length > LIST_ROWS) {
@@ -218,8 +228,11 @@ function listScreen(sessions: Session[], cursor: number, top: number, offset: nu
 /** Yes and No: the picked one is dark on a bright amber plate, the other light amber on the frame. */
 const CHOICE = { plate: "#FFCD6AFF", picked: "#3A2608FF", other: "#F0D9A8FF" };
 
-/** The approval screen: the frame's outline is a ring of dashes running clockwise, so it reads from across a room. */
-function promptScreen(p: Prompt, choice: "yes" | "no"): Element[] {
+/**
+ * The approval screen: the frame's outline is a ring of dashes running clockwise, so it reads from across a room.
+ * Without `choice`, the frame stays up with no Yes and No while the next prompt of the queue is on its way.
+ */
+function promptScreen(p: Prompt, choice: "yes" | "no" | null): Element[] {
   const plate = (x: number, width: number): Element => ({
     id: "plate",
     type: "rectangle",
@@ -233,14 +246,18 @@ function promptScreen(p: Prompt, choice: "yes" | "no"): Element[] {
     border_width: 0,
     z_index: 1,
   });
-  const elements = [
+  const elements: Element[] = [
     ...frame("approve"),
     { id: "border_anim", type: "animation", path: "animations/border.anim", loop: true, x: 0, y: 0, z_index: 1 },
-    text("line1", `Approve? ${p.text}`, TEXT_X, LINE_1_Y, WHITE, { width: TEXT_WIDTH, ...SCROLL }),
-    choice === "yes" ? plate(17, 15) : plate(34, 12),
-    text("yes", "Yes", 19, LINE_2_Y, choice === "yes" ? CHOICE.picked : CHOICE.other),
-    text("no", "No", 36, LINE_2_Y, choice === "no" ? CHOICE.picked : CHOICE.other),
+    text("line1", choice === null ? "Next request" : `Approve? ${p.text}`, TEXT_X, LINE_1_Y, WHITE, { width: TEXT_WIDTH, ...SCROLL }),
   ];
+  if (choice !== null) {
+    elements.push(
+      choice === "yes" ? plate(17, 15) : plate(34, 12),
+      text("yes", "Yes", 19, LINE_2_Y, choice === "yes" ? CHOICE.picked : CHOICE.other),
+      text("no", "No", 36, LINE_2_Y, choice === "no" ? CHOICE.picked : CHOICE.other),
+    );
+  }
   if (p.queue > 1) elements.push(text("queue", `+${p.queue - 1}`, TEXT_RIGHT, LINE_2_Y, TINT.approve.timer, { align: "top_right" }));
   return elements;
 }
@@ -275,7 +292,8 @@ async function send(elements: Element[], ledColor: string | null): Promise<void>
 /**
  * Sends only what changed. The firmware refuses a whole delete when one of the ids is already gone (a short Back
  * clears the screen on 1.3.1), so on any refusal everything of ours is cleared and drawn again.
- * Each element is serialised once: on the bar every JerryScript instruction costs about 3 microseconds.
+ * Elements are compared by their JSON, kept from the last draw: on the bar every JerryScript instruction costs
+ * about 3 microseconds, so each element is stringified once per draw for the comparison.
  */
 async function draw(elements: Element[], ledColor: string | null): Promise<void> {
   const json = elements.map((e) => JSON.stringify(e));
@@ -347,14 +365,15 @@ function main(): void {
   /** The daemon speaks a newer protocol than this app. */
   let tooNew = false;
   let model: Model | null = null;
-  /** Mac clock minus bar clock, seconds. */
+  /** The computer's clock minus the bar's clock, seconds. */
   let offset = 0;
-  let error = "";
+  /** The last error per address, so each is logged once while it lasts. */
+  const errors = new Map<string, string>();
 
   /**
    * Two levels: the list of sessions, and one session in full. The wheel moves the list's cursor, Start opens the
    * session under it, Back goes up a level and, from the list, leaves the app. Sessions are kept by id, because the
-   * Mac reorders them as their states change.
+   * computer reorders them as their states change.
    */
   let level: "list" | "session" = "list";
   let cursorId = "";
@@ -362,20 +381,40 @@ function main(): void {
   let top = 0;
   let stopped = false;
   let choice: "yes" | "no" = "yes";
-  /** Prompts answered or waved off here; hidden at once, before the Mac confirms. */
+  /** Prompts answered or waved off here; hidden at once, before the computer confirms. */
   const handled = new Set<number>();
-  /** When the LED last started blinking for a prompt. */
+  /** The prompt on the screen, from the draw that showed it, and since when; presses answer only this one. */
+  let shown: { id: number; at: number } | null = null;
+  /** When the LED last started blinking, and for which prompt. */
   let blinkedAt = 0;
+  let blinkedFor: number | null = null;
   /** Firmware 1.3.1 (API 27.14) clears the app's screen on a short Back; 1.4.1 (API 27.15) leaves it alone. */
   let backClears = true;
+  /** Set by a short Back on 1.3.1: the next draw sends everything. */
+  let cleared = false;
+  /** Pending waits: the poll loop's sleeps and the redraw after Back. quit() cuts them short. */
+  const timers = new Map<ReturnType<typeof setTimeout>, () => void>();
 
   const report = (err: unknown) => console.error(`${APP}: ${err instanceof Error ? err.message : String(err)}`);
   const base = () => settings.bases[active] ?? `http://${DEFAULT_HOST}`;
   const headers = () => ({ Authorization: `Bearer ${settings.token}` });
 
   const activePrompt = (): Prompt | null => (model?.prompt && !handled.has(model.prompt.id) ? model.prompt : null);
+  /** Answered here with more in the queue: the daemon is about to send the next one. */
+  const nextComing = (p: Prompt) => handled.has(p.id) && p.queue > 1;
+  /** A press answers a prompt only once it is on the screen and has been there long enough to be read. */
+  const answerable = (p: Prompt) => shown !== null && shown.id === p.id && Date.now() - shown.at >= ANSWER_AFTER_MS;
 
-  function screen(): { elements: Element[]; led: string | null } {
+  function later(ms: number, done: () => void): void {
+    if (stopped) return done();
+    const handle = setTimeout(() => {
+      timers.delete(handle);
+      done();
+    }, ms);
+    timers.set(handle, done);
+  }
+
+  function screen(): { elements: Element[]; led: string | null; prompt?: Prompt } {
     if (settings.token === "") return { elements: setupScreen(help.elements), led: null };
     if (tooNew) return { elements: messageScreen("Update app", "run setup"), led: null };
     if (model === null) {
@@ -386,10 +425,16 @@ function main(): void {
     }
     const prompt = activePrompt();
     if (prompt) {
-      const led = Date.now() - blinkedAt >= LED_REPEAT_MS ? LED_COLOR : null;
-      if (led) blinkedAt = Date.now();
-      return { elements: promptScreen(prompt, choice), led };
+      // A new prompt blinks at once; one that keeps waiting blinks again once the last blink is over.
+      const now = Date.now();
+      const led = prompt.id !== blinkedFor || now - blinkedAt >= LED_REPEAT_MS ? LED_COLOR : null;
+      if (led) {
+        blinkedAt = now;
+        blinkedFor = prompt.id;
+      }
+      return { elements: promptScreen(prompt, choice), led, prompt };
     }
+    if (model.prompt && nextComing(model.prompt)) return { elements: promptScreen(model.prompt, null), led: null };
     const { sessions } = model;
     if (sessions.length === 0) return { elements: messageScreen("Connected", "no sessions yet"), led: null };
     const cursor = cursorIndex();
@@ -411,10 +456,16 @@ function main(): void {
     return 0;
   }
 
-  /** Leaves the app: nothing keeps it alive once the poll loop sees `stopped` and the input handler is gone. */
+  /** Leaves the app: nothing keeps it alive once the timers are cleared, the poll loop ends and the input handler is gone. */
   function quit(): void {
     stopped = true;
     clearInterval(recheck);
+    // A sleep cut short lets the poll loop see `stopped` now; a long poll already sent still runs to its end.
+    for (const [handle, done] of timers) {
+      clearTimeout(handle);
+      done();
+    }
+    timers.clear();
     // Not detached from inside the handler itself: with nothing else left the unbind stops the app on the spot.
     setTimeout(unbind, 0);
   }
@@ -429,8 +480,21 @@ function main(): void {
     while (dirty) {
       dirty = false;
       if (stopped) break;
-      const { elements, led } = screen();
-      await draw(elements, led).catch(report);
+      if (cleared) {
+        cleared = false;
+        onScreen.clear();
+        shown = null;
+      }
+      const { elements, led, prompt } = screen();
+      try {
+        await draw(elements, led);
+        if (!prompt) shown = null;
+        else if (shown?.id !== prompt.id) shown = { id: prompt.id, at: Date.now() };
+      } catch (err) {
+        // What the screen shows is unknown now.
+        shown = null;
+        report(err);
+      }
     }
     drawing = false;
   }
@@ -440,19 +504,23 @@ function main(): void {
    * next one is tried. A refusal counts as a failure too: the daemon may know the bar by its other address.
    */
   async function poll(): Promise<void> {
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const sleep = (ms: number) => new Promise<void>((resolve) => later(ms, resolve));
     while (!stopped) {
       try {
         const response = await fetch(`${base()}/state?v=${model?.v ?? 0}`, { headers: headers() });
-        if (response.status === 401 || response.status === 403) {
-          const kind = response.status === 401 ? "token" : "bar";
-          if (refused !== kind) {
-            refused = kind;
-            void render();
+        if (!response.ok) {
+          // Read the body either way so the firmware can free the connection.
+          await response.text().catch(() => "");
+          if (response.status === 401 || response.status === 403) {
+            const kind = response.status === 401 ? "token" : "bar";
+            if (refused !== kind) {
+              refused = kind;
+              void render();
+            }
+            throw new Error(`${shortHost(base())}: ${kind === "token" ? "wrong token" : "this bar is not paired"}`);
           }
-          throw new Error(`${shortHost(base())}: ${kind === "token" ? "wrong token" : "this bar is not paired"}`);
+          throw new Error(`${shortHost(base())}: daemon answered ${response.status}`);
         }
-        if (!response.ok) throw new Error(`${shortHost(base())}: daemon answered ${response.status}`);
         const next = (await response.json()) as Model;
         refused = null;
         attempts = 0;
@@ -465,18 +533,20 @@ function main(): void {
           continue;
         }
         tooNew = false;
-        offset = next.now - Date.now() / 1000;
+        // `now` is whole seconds: a smaller change is the rounding, and following it would step the timers.
+        const measured = next.now - Date.now() / 1000;
+        if (model === null || Math.abs(measured - offset) > OFFSET_SLACK) offset = measured;
         // A new prompt starts on Yes; a prompt that left the queue no longer needs hiding.
         if (next.prompt?.id !== model?.prompt?.id) choice = "yes";
         for (const id of handled) if (next.prompt?.id !== id) handled.delete(id);
         model = next;
-        error = "";
+        errors.clear();
         void render();
       } catch (err) {
         attempts += 1;
         const message = err instanceof Error ? err.message : String(err);
-        if (message !== error) report(err);
-        error = message;
+        if (errors.get(base()) !== message) report(err);
+        errors.set(base(), message);
         const hosts = settings.bases.length;
         active = (active + 1) % hosts;
         const stale = attempts >= Math.max(STALE_AFTER, hosts);
@@ -494,11 +564,14 @@ function main(): void {
     handled.add(prompt.id);
     void render();
     fetch(`${base()}/answer`, { method: "POST", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify({ id: prompt.id, answer: value }) })
-      .then((response) => {
+      .then(async (response) => {
+        await response.text().catch(() => "");
+        // Gone: the computer no longer holds it (answered in the terminal, or handed back there); it stays hidden.
+        if (response.status === 410) return console.log(`${APP}: prompt ${prompt.id} is no longer waiting, the terminal has it`);
         if (!response.ok) throw new Error(`answer refused: ${response.status}`);
       })
       .catch((err: unknown) => {
-        // Not delivered: show the prompt again, the Mac is still waiting for it.
+        // Not delivered: show the prompt again, the computer is still waiting for it.
         handled.delete(prompt.id);
         report(err);
         void render();
@@ -513,14 +586,18 @@ function main(): void {
     const back = press && event.key === "back";
     const prompt = activePrompt();
     const sessions = model?.sessions ?? [];
-    if (prompt) {
-      if (event.key === "encoder") choice = choice === "yes" ? "no" : "yes";
+    let changed = true;
+    if (model?.prompt && (prompt || nextComing(model.prompt))) {
+      // While a prompt waits, presses go to it alone, and only once it can be answered.
+      if (!prompt || !answerable(prompt)) changed = false;
+      // Yes is on the left, No on the right; the wheel's +1 moves the list down and here moves right.
+      else if (event.key === "encoder") choice = event.delta < 0 ? "yes" : "no";
       else if (enter) answer(prompt, choice === "yes" ? "allow" : "deny");
       else if (back) answer(prompt, "dismiss");
-      else return;
+      else changed = false;
     } else if (level === "session") {
-      if (!back) return;
-      level = "list";
+      if (back) level = "list";
+      else changed = false;
     } else if (event.key === "encoder" && sessions.length > 0) {
       const next = Math.min(sessions.length - 1, Math.max(0, cursorIndex() + event.delta));
       cursorId = sessions[next]!.id;
@@ -531,10 +608,19 @@ function main(): void {
       quit();
       return;
     } else {
+      changed = false;
+    }
+    // Firmware 1.3.1 clears the app's screen on any short Back, so everything is drawn again, and once more a
+    // moment later in case the clear lands after that redraw.
+    if (back && backClears) {
+      cleared = true;
+      later(BACK_REDRAW_MS, () => {
+        cleared = true;
+        void render();
+      });
+    } else if (!changed) {
       return;
     }
-    // Firmware 1.3.1 clears the app's screen on a short Back, so there everything is drawn again.
-    if (event.key === "back" && backClears) onScreen.clear();
     void render();
   });
 
@@ -548,7 +634,7 @@ function main(): void {
     const key = JSON.stringify(addresses);
     if (key === help.key) return;
     help.key = key;
-    help.elements = helpElements(addresses) as unknown as Element[];
+    help.elements = helpElements(addresses);
     void render();
   }
 

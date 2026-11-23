@@ -1,19 +1,20 @@
-// Back display help while nothing is set up on the computer: where to open the bar's web page and where to go
-// there; the app's settings hold the guide (the FAQ link and the installer commands). After Net Traffic, whose
-// widths were measured on the back display (21.11); the drawable width is 148 px.
+// The back display while nothing is set up on the computer: where to open the bar's web page and where to go
+// there; the app's settings hold the guide (the FAQ link and the installer commands). Text widths below were
+// measured on the back display; its drawable width is 148 px, right of it is the firmware's status bar.
 
 export interface WebAddress {
   how: "Wi-Fi" | "USB";
   address: string;
 }
 
-interface Base {
+// Types, not interfaces: the elements go into the app's own element list, which takes any plain object with an id.
+type Base = {
   id: string;
   display: "back";
   x: number;
   y: number;
   z_index: number;
-}
+};
 export type HelpElement =
   | (Base & { type: "text"; align: "top_left"; text: string; font: "bold" | "normal" | "extra_large"; color: string })
   | (Base & { type: "rectangle"; width: number; height: number; radius: number; fill: "solid"; fill_colors: string[]; border_width: number })
@@ -125,7 +126,9 @@ export async function webAddresses(api: string): Promise<WebAddress[]> {
   const get = async <T>(path: string): Promise<T | null> => {
     try {
       const res = await fetch(`${api}${path}`);
-      return res.ok ? ((await res.json()) as T) : null;
+      // Read the body either way so the firmware can free the connection.
+      const body = await res.text();
+      return res.ok ? (JSON.parse(body) as T) : null;
     } catch {
       return null;
     }

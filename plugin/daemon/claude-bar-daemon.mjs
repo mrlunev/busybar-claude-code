@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Claude Code on the BUSY Bar: the Mac side.
+// Claude Code on the BUSY Bar: the computer side.
 //
 //   node daemon/claude-bar-daemon.mjs [--port 8790] [--bar 10.0.4.20] [--hold 590]
 //   node daemon/claude-bar-daemon.mjs --print-hooks      the hooks block for ~/.claude/settings.json
@@ -12,16 +12,18 @@
 // Claude Code posts every session event here through global `http` hooks. The daemon keeps a small picture of
 // all sessions and serves it to the bar app, which also sends back the answers to permission prompts.
 //
-// POST /hook                 from Claude Code on this Mac (loopback only). A PermissionRequest is held open until
-//                            the bar answers, the prompt is answered in the terminal, or --hold seconds pass.
+// POST /hook                 from Claude Code on this computer. A PermissionRequest is held open until the bar
+//                            answers, the prompt is answered in the terminal, --hold seconds pass, or the bar stops
+//                            polling; with no bar polling it is not held at all.
 // GET  /state?v=<version>    from the bar: the current picture. Waits up to 3 s for a newer version than v.
 // POST /answer               from the bar: {"id": <prompt id>, "answer": "allow" | "deny" | "dismiss"}
-// GET  /ping, POST /quit     from this Mac: which daemon runs, and stop it (setup and --ensure use them)
-// POST /setup-test           from this Mac: a "press Start" prompt on the bar; answers once it is pressed
+// GET  /ping, POST /quit     from this computer: which daemon runs, and stop it (setup and --ensure use them)
+// POST /setup-test           from this computer: a "press Start" prompt on the bar; answers once it is pressed
 //
-// The bar must send the token (`Authorization: Bearer <token>` or `?token=`) and come from an allowed address:
-// an "allow" runs a command on this Mac, so nobody else on the network may send one. When the paired bar gets a
-// new Wi-Fi address, a request with the right token from it is let in once mDNS confirms the address is that bar.
+// The endpoints for this computer take loopback calls with no Origin header and a loopback Host, so a web page open
+// in a browser here cannot reach them. The bar must send `Authorization: Bearer <token>` and come from an address
+// setup recorded: an "allow" runs a command on this computer, so nobody else on the network may send one. A bar with
+// a new Wi-Fi address is refused until setup runs again.
 // No dependencies; Node 20+.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -31,7 +33,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "node:util";
-import { findBars } from "./mdns.mjs";
 import { codeVersion, ensure, setup, uninstall } from "./setup.mjs";
 
 const args = process.argv.slice(2);
@@ -54,8 +55,10 @@ const SETTINGS_PATH = path.join(os.homedir(), ".claude", "settings.json");
 
 const config = loadConfig();
 const PORT = Number(option("--port", config.port));
-/** Addresses the bar may call from. Over USB the bar is 10.0.4.20; add its Wi-Fi address with --bar. */
-const BAR_ADDRESSES = new Set([...config.bars, ...args.flatMap((a, i) => (args[i - 1] === "--bar" ? [a] : []))]);
+/** Bar addresses given with --bar, on top of the ones setup recorded. */
+const EXTRA_BARS = args.flatMap((a, i) => (args[i - 1] === "--bar" ? [a] : []));
+/** Addresses the bar may call from. Over USB the bar is 10.0.4.20; setup records its Wi-Fi address. */
+const BAR_ADDRESSES = new Set([...config.bars, ...EXTRA_BARS]);
 /** A prompt is let go this long after it arrived, so Claude Code's own hook timeout (600 s) never fires first. */
 const HOLD_S = Number(option("--hold", 590));
 /** Long-poll: how long GET /state waits for news. The bar's fetch gives up after 5 s of silence. */
@@ -72,8 +75,13 @@ const PROMPT_TEXT_MAX = 140;
 const DOING_MAX = 60;
 /** The snapshot's shape. The bar app shows "Update app" when the daemon is newer than it understands. */
 const API_VERSION = 1;
-/** A bar with the right token but an unknown address is looked up over mDNS at most this often. */
-const LOOKUP_EVERY_MS = 30_000;
+/**
+ * The bar polls /state every few seconds while the app runs. This long without a poll means no bar can answer (off,
+ * asleep, in another app): prompts are not held, and held ones go back to the terminal.
+ */
+const BAR_GONE_MS = 10_000;
+/** A refusal is logged at most this often per caller address. */
+const REFUSED_LOG_EVERY_MS = 60_000;
 /** How long the setup's "press Start" prompt waits. */
 const SETUP_TEST_S = 120;
 /** Changes whenever this file does, so --ensure replaces a daemon left running from an older version. */
@@ -236,7 +244,6 @@ function setState(s, state, doing) {
   else if (doingChanged) changed(true);
 }
 
-/** Printable ASCII only: the bar's fonts have nothing else. */
 /**
  * Letters the bar's fonts lack, mapped to the nearest ones they have. Checked on firmware 1.4.1: both fonts draw
  * ASCII, the Russian alphabet with Ё, and « » — … “ ”; Latin letters with accents, other Cyrillic letters, CJK and
@@ -250,6 +257,11 @@ function barText(text) {
     .replace(/\s+/g, " ")
     .replace(/[^\x20-\x7eА-яЁё«»—…“”]/gu, (c) => NEAREST[c] ?? "?")
     .trim();
+}
+
+/** At most `max` characters; a cut text ends with "…", so a shortened command does not pass for the whole one. */
+function clip(text, max) {
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
 }
 
 const base = (p) => (typeof p === "string" && p ? path.basename(p) : "");
@@ -304,11 +316,21 @@ const DESKTOP_WRAP_UP = "mcp__ccd_turn__wrap_up";
 function question(name, input = {}) {
   if (name === "ExitPlanMode") return "Plan ready";
   const asked = name === "AskUserQuestion" ? input.questions?.[0]?.question : input.ask;
-  return typeof asked === "string" && asked.trim() ? barText(asked).slice(0, PROMPT_TEXT_MAX) : "Question";
+  return typeof asked === "string" && asked.trim() ? clip(barText(asked), PROMPT_TEXT_MAX) : "Question";
+}
+
+const HOOK_STRINGS = ["session_id", "hook_event_name", "tool_name", "cwd", "transcript_path"];
+
+/** A hook body of the shape Claude Code sends: anything else would end up in every snapshot, so it is dropped. */
+function hookShaped(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  if (HOOK_STRINGS.some((key) => input[key] !== undefined && typeof input[key] !== "string")) return false;
+  return input.tool_input === undefined || (typeof input.tool_input === "object" && input.tool_input !== null);
 }
 
 /** Handles one hook event. Returns the hook's JSON answer, or a promise of it for a held permission prompt. */
 function onHook(input) {
+  if (!hookShaped(input)) return {};
   const event = input.hook_event_name;
   if (!input.session_id || !event) return {};
   if (event === "SessionEnd") {
@@ -337,7 +359,7 @@ function onHook(input) {
       releasePrompts(s.id);
       if (input.tool_name === DESKTOP_WRAP_UP && input.tool_input?.ask) s.question = question(input.tool_name, input.tool_input);
       if (ASKS_PERSON.has(input.tool_name)) setState(s, "input", question(input.tool_name, input.tool_input));
-      else setState(s, "working", describeTool(input.tool_name, input.tool_input).slice(0, DOING_MAX));
+      else setState(s, "working", clip(describeTool(input.tool_name, input.tool_input), DOING_MAX));
       break;
     case "PostToolUse":
     case "PostToolUseFailure":
@@ -363,6 +385,8 @@ function onHook(input) {
         setState(s, "input", question(input.tool_name, input.tool_input));
         return {};
       }
+      // No bar to answer: the terminal asks at once instead of after --hold seconds.
+      if (!barPolling()) return {};
       return holdPrompt(s, input);
   }
   return {};
@@ -371,8 +395,9 @@ function onHook(input) {
 /**
  * Keeps a permission prompt open until it is answered; resolves to the hook's answer. The same request arriving
  * twice (hooks both in settings.json and in the plugin each fire) joins the prompt already open: one press answers both.
+ * With `needsBar` (all but the setup test, which waits for the bar to show up), it is let go once the bar stops polling.
  */
-function holdPrompt(s, input, { text, holdS = HOLD_S } = {}) {
+function holdPrompt(s, input, { text, holdS = HOLD_S, needsBar = true } = {}) {
   return new Promise((resolve) => {
     const key = `${s.id}\n${input.tool_name}\n${JSON.stringify(input.tool_input ?? null)}`;
     const same = text === undefined && prompts.find((p) => p.key === key);
@@ -383,12 +408,14 @@ function holdPrompt(s, input, { text, holdS = HOLD_S } = {}) {
       session: s.id,
       project: project(s),
       tool: describeTool(input.tool_name),
-      text: barText(text ?? `${project(s)}: ${describeTool(input.tool_name, input.tool_input)}`).slice(0, PROMPT_TEXT_MAX),
+      text: clip(barText(text ?? `${project(s)}: ${describeTool(input.tool_name, input.tool_input)}`), PROMPT_TEXT_MAX),
+      needsBar,
       resolvers: [resolve],
       timer: setTimeout(() => answerPrompt(prompt.id, "dismiss"), holdS * 1000),
     };
     prompts.push(prompt);
-    log(`prompt ${prompt.id}: ${prompt.text}`);
+    // The command itself stays out of the log.
+    log(`prompt ${prompt.id}: ${prompt.tool}`);
     changed();
   });
 }
@@ -415,6 +442,15 @@ function answerPrompt(id, answer) {
 function releasePrompts(sessionId) {
   for (const p of prompts.filter((p) => p.session === sessionId)) answerPrompt(p.id, "dismiss");
 }
+
+/** When the bar last asked for the state. Setup uses it too: "the bar can't reach this computer" or "nobody pressed". */
+let barSeenAt = 0;
+const barPolling = () => Date.now() - barSeenAt < BAR_GONE_MS;
+
+setInterval(() => {
+  if (barPolling()) return;
+  for (const p of prompts.filter((p) => p.needsBar)) answerPrompt(p.id, "dismiss");
+}, 1000).unref();
 
 // ---------------------------------------------------------------------------------------------------------------
 // Transcripts: context use, and interrupts (Esc fires no Stop hook)
@@ -540,7 +576,7 @@ function startDemo() {
     s.doing = steps[step++ % steps.length];
     changed(true);
   }, 2500).unref();
-  // A prompt now and then; the bar's answer only clears it.
+  // A prompt now and then, while a bar polls; the bar's answer only clears it.
   const ask = () => {
     if (prompts.length === 0) {
       holdPrompt(sessions.get("demo-3"), { tool_name: "Bash", tool_input: { command: "git push origin main" } }).then(() => setTimeout(ask, 20000));
@@ -582,6 +618,10 @@ function snapshot() {
 // HTTP
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+/** A page that rebinds its own domain to 127.0.0.1 still sends that domain as Host; Claude Code sends 127.0.0.1. */
+const LOCAL_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);
+/** Endpoints for Claude Code and setup on this computer, never for the bar. */
+const LOCAL_PATHS = new Set(["/hook", "/ping", "/quit", "/setup-test"]);
 
 function log(message) {
   console.log(`${new Date().toLocaleTimeString()} ${message}`);
@@ -606,63 +646,56 @@ function readBody(req) {
   });
 }
 
-function tokenOk(req, url) {
+function tokenOk(req) {
   const header = req.headers.authorization ?? "";
-  const given = header.startsWith("Bearer ") ? header.slice(7) : (url.searchParams.get("token") ?? "");
-  const a = Buffer.from(given);
+  const a = Buffer.from(header.startsWith("Bearer ") ? header.slice(7) : "");
   const b = Buffer.from(config.token);
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-let lastLookup = 0;
+/** Caller address -> when its last refusal was logged. */
+const refusedLogged = new Map();
 
-/** Lets in a new address of the paired bar (its router gave it another one), once mDNS says it is that bar. */
-async function learnBar(address) {
-  if (Date.now() - lastLookup < LOOKUP_EVERY_MS) return false;
-  lastLookup = Date.now();
-  const bars = await findBars({ timeoutMs: 2000 }).catch(() => []);
-  const bar = bars.find((b) => b.addresses.includes(address) && (!config.paired || b.id === config.paired.id));
-  if (!bar) return false;
-  BAR_ADDRESSES.add(address);
-  config.bars = [...new Set([...config.bars, address])];
-  saveConfig();
-  log(`bar ${bar.id} is now at ${address}`);
-  return true;
+function logRefused(req, pathname, from) {
+  const now = Date.now();
+  if (now - (refusedLogged.get(from) ?? 0) < REFUSED_LOG_EVERY_MS) return;
+  if (refusedLogged.size > 1000) refusedLogged.clear();
+  refusedLogged.set(from, now);
+  log(`refused ${req.method} ${pathname} from ${from} (further refusals from it unlogged for a minute)`);
 }
-
-/** When the bar last asked for the state: setup tells "the bar can't reach this computer" from "nobody pressed". */
-let barSeenAt = 0;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const from = req.socket.remoteAddress ?? "";
-  const local = LOOPBACK.has(from);
+  // A web page in a browser here reaches loopback too, but sends Origin, or a Host of its own when rebound.
+  const local = LOOPBACK.has(from) && !req.headers.origin && LOCAL_HOSTS.has(String(req.headers.host ?? "").toLowerCase());
   try {
+    if (LOCAL_PATHS.has(url.pathname) && !local) {
+      logRefused(req, url.pathname, from);
+      return send(res, 403, { error: "for this computer only" });
+    }
     if (url.pathname === "/hook" && req.method === "POST") {
-      if (!local) return send(res, 403, { error: "hooks come from this Mac only" });
       const input = JSON.parse((await readBody(req)) || "{}");
       return send(res, 200, await onHook(input));
     }
-    if (url.pathname === "/ping" && local) return send(res, 200, { version: VERSION, barSeenAt });
-    if (url.pathname === "/quit" && req.method === "POST" && local) {
+    if (url.pathname === "/ping") return send(res, 200, { version: VERSION, barSeenAt });
+    if (url.pathname === "/quit" && req.method === "POST") {
       send(res, 200, { ok: true });
       for (const p of [...prompts]) answerPrompt(p.id, "dismiss");
       server.close();
       setTimeout(() => process.exit(0), 100).unref();
       return;
     }
-    if (url.pathname === "/setup-test" && req.method === "POST" && local) {
+    if (url.pathname === "/setup-test" && req.method === "POST") {
       const started = Date.now();
-      const answer = await holdPrompt({ id: "setup", cwd: "Setup" }, {}, { text: "Setup: press Start on the bar", holdS: SETUP_TEST_S });
+      const answer = await holdPrompt({ id: "setup", cwd: "Setup" }, {}, { text: "Setup: press Start on the bar", holdS: SETUP_TEST_S, needsBar: false });
       const behavior = answer.hookSpecificOutput?.decision?.behavior ?? "dismiss";
       return send(res, 200, { answer: behavior, barSeen: barSeenAt >= started });
     }
 
-    const address = from.replace(/^::ffff:/, "");
-    const tokenGood = tokenOk(req, url);
-    const bar = BAR_ADDRESSES.has(address) || local || (tokenGood && (await learnBar(address)));
-    if (!bar || !tokenGood) {
-      log(`refused ${req.method} ${url.pathname} from ${from}`);
+    const bar = BAR_ADDRESSES.has(from.replace(/^::ffff:/, "")) || local;
+    if (!bar || !tokenOk(req)) {
+      logRefused(req, url.pathname, from);
       // 401 tells the bar its token is wrong; 403 that it calls from an address that isn't a known bar.
       return send(res, bar ? 401 : 403, { error: bar ? "wrong token" : "forbidden" });
     }
@@ -688,12 +721,15 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/answer" && req.method === "POST") {
       const { id, answer } = JSON.parse((await readBody(req)) || "{}");
       if (!["allow", "deny", "dismiss"].includes(answer)) return send(res, 400, { error: "answer is allow, deny or dismiss" });
-      return send(res, 200, { ok: answerPrompt(Number(id), answer) });
+      // 410: the prompt is no longer held here (answered in the terminal, or handed back to it); the bar drops it.
+      if (!answerPrompt(Number(id), answer)) return send(res, 410, { error: "this prompt is no longer waiting" });
+      return send(res, 200, { ok: true });
     }
 
     send(res, 404, { error: "not found" });
   } catch (err) {
-    log(`${req.method} ${url.pathname}: ${err instanceof Error ? err.message : String(err)}`);
+    // A JSON error quotes the body, which may hold a command: only its kind is logged.
+    log(`${req.method} ${url.pathname}: ${err instanceof SyntaxError ? "not JSON" : err instanceof Error ? err.message : String(err)}`);
     if (!res.headersSent) send(res, 400, { error: "bad request" });
   }
 });
@@ -720,10 +756,10 @@ function scrubLog(file, token) {
 
 if (flag("--ensure")) {
   // Run by a SessionStart hook: whatever it prints would land in Claude's context, so it prints nothing.
-  await ensure({ port: PORT, version: VERSION, configDir: CONFIG_DIR }).catch(() => {});
+  await ensure({ port: PORT, bars: EXTRA_BARS, version: VERSION, configDir: CONFIG_DIR }).catch(() => {});
   process.exit(0);
 } else if (args[0] === "setup") {
-  process.exit(await setup({ port: PORT, version: VERSION, config, saveConfig, paths }));
+  process.exit(await setup({ port: PORT, bars: EXTRA_BARS, version: VERSION, config, saveConfig, paths }));
 } else if (args[0] === "uninstall") {
   process.exit(await uninstall({ port: PORT, config, paths, hookUrl: `http://127.0.0.1:${PORT}/hook` }));
 } else {

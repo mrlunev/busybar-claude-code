@@ -108,9 +108,9 @@ export async function launchApp(address, appId, { token } = {}) {
 
 /**
  * Quits the running app. Returns true if one was stopped, false if nothing ran. The firmware's quit takes no app id
- * and the API does not say which app runs, so this stops whatever runs; appId only names what the caller means.
+ * and the API does not say which app runs, so this stops whatever runs.
  */
-export async function stopApp(address, appId, { token } = {}) {
+export async function stopApp(address, { token } = {}) {
   return quit(address, token);
 }
 
@@ -123,12 +123,6 @@ export async function removeApp(address, appId, { token } = {}) {
     if (err.status === 404) return false;
     throw err;
   }
-}
-
-/** The app's current settings values, e.g. { host, token, context_bar }; defaults until something was saved. */
-export async function appSettings(address, appId, { token } = {}) {
-  const doc = await settingsDocument(address, appId, token);
-  return { ...doc.values };
 }
 
 /**
@@ -154,7 +148,7 @@ export async function setAppSettings(address, appId, values, { token } = {}) {
 
 async function settingsDocument(address, appId, token) {
   const doc = await call(address, "GET", "/api/apps/settings", { token, query: { app_id: appId }, timeoutMs: QUICK_MS });
-  if (!doc || typeof doc.values !== "object") throw new Error(`The bar sent no settings for ${appId}`);
+  if (!doc || typeof doc.values !== "object" || doc.values === null) throw new Error(`The bar sent no settings for ${appId}`);
   return doc;
 }
 

@@ -18,4 +18,4 @@ Set up the BUSY Bar for this computer.
    - macOS: `brew install node`, or the LTS installer from https://nodejs.org
    - Windows: `winget install OpenJS.NodeJS.LTS`, or the LTS installer from https://nodejs.org (then restart Claude Code so `node` is on PATH)
 
-To remove the app and the bridge later: `node "${CLAUDE_PLUGIN_ROOT}/daemon/claude-bar-daemon.mjs" uninstall`.
+To stop the bridge and delete its settings later: `node "${CLAUDE_PLUGIN_ROOT}/daemon/claude-bar-daemon.mjs" uninstall`; the app on the bar stays until it is deleted in the BUSY app.

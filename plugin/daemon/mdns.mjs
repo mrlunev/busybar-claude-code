@@ -66,7 +66,7 @@ export async function findBars({ timeoutMs = 3000 } = {}) {
       id: instance.split(".")[0],
       name: seen.txt.get(instance) ?? "",
       address: addressFrom(source),
-      // Every network the bar answered on (USB and Wi-Fi): the daemon checks a new caller against all of them.
+      // Every network the bar answered on (USB and Wi-Fi).
       addresses: [...new Set([...seen.sources.get(instance)].map(addressFrom))],
       port: srv?.port ?? 80,
     };
