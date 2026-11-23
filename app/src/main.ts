@@ -23,8 +23,6 @@ const STALE_AFTER = 3;
 const HELP_MS = 10000;
 /** A prompt takes no answer until it has been on the screen this long: a press meant for the screen before must not answer it. */
 const ANSWER_AFTER_MS = 400;
-/** On 1.3.1 the firmware's clear after a short Back can land after our redraw, so everything is drawn once more. */
-const BACK_REDRAW_MS = 300;
 /** The daemon's clock comes in whole seconds; a smaller change of the offset is that rounding, not a new clock. */
 const OFFSET_SLACK = 2;
 
@@ -290,8 +288,8 @@ async function send(elements: Element[], ledColor: string | null): Promise<void>
 }
 
 /**
- * Sends only what changed. The firmware refuses a whole delete when one of the ids is already gone (a short Back
- * clears the screen on 1.3.1), so on any refusal everything of ours is cleared and drawn again.
+ * Sends only what changed. The firmware refuses a whole delete when one of the ids is already gone, so on any
+ * refusal everything of ours is cleared and drawn again.
  * Elements are compared by their JSON, kept from the last draw: on the bar every JerryScript instruction costs
  * about 3 microseconds, so each element is stringified once per draw for the comparison.
  */
@@ -388,11 +386,7 @@ function main(): void {
   /** When the LED last started blinking, and for which prompt. */
   let blinkedAt = 0;
   let blinkedFor: number | null = null;
-  /** Firmware 1.3.1 (API 27.14) clears the app's screen on a short Back; 1.4.1 (API 27.15) leaves it alone. */
-  let backClears = true;
-  /** Set by a short Back on 1.3.1: the next draw sends everything. */
-  let cleared = false;
-  /** Pending waits: the poll loop's sleeps and the redraw after Back. quit() cuts them short. */
+  /** Pending waits of the poll loop; quit() cuts them short. */
   const timers = new Map<ReturnType<typeof setTimeout>, () => void>();
 
   const report = (err: unknown) => console.error(`${APP}: ${err instanceof Error ? err.message : String(err)}`);
@@ -480,11 +474,6 @@ function main(): void {
     while (dirty) {
       dirty = false;
       if (stopped) break;
-      if (cleared) {
-        cleared = false;
-        onScreen.clear();
-        shown = null;
-      }
       const { elements, led, prompt } = screen();
       try {
         await draw(elements, led);
@@ -610,18 +599,7 @@ function main(): void {
     } else {
       changed = false;
     }
-    // Firmware 1.3.1 clears the app's screen on any short Back, so everything is drawn again, and once more a
-    // moment later in case the clear lands after that redraw.
-    if (back && backClears) {
-      cleared = true;
-      later(BACK_REDRAW_MS, () => {
-        cleared = true;
-        void render();
-      });
-    } else if (!changed) {
-      return;
-    }
-    void render();
+    if (changed) void render();
   });
 
   /** The back screen's guide while nothing is set up; built again only when the bar's addresses change. */
@@ -644,12 +622,6 @@ function main(): void {
   }, TICK_MS);
 
   void (async () => {
-    try {
-      const [major, minor] = (await device.ApiVersion()).split(".").map(Number);
-      backClears = !(major! > 27 || (major === 27 && minor! >= 15));
-    } catch (err) {
-      report(err);
-    }
     settings = await loadSettings();
     await refreshHelp();
     await render();

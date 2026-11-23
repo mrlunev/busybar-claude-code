@@ -29,8 +29,8 @@ const INSTALL_MS = 120_000;
  *   serial     GET /api/status/device serial_number (hex of the MCU UID)
  *   usbMac     "aa:bb:cc:dd:ee:ff" from status/device; the bar's USB network interface. wifiMac, bleMac likewise.
  *   model      OTP model, e.g. "BB.1"
- *   firmware   version string from GET /api/status/firmware, e.g. "1.3.1"; branch and commit beside it
- *   api        HTTP API semver, GET /api/version, e.g. "27.14.0"
+ *   firmware   version string from GET /api/status/firmware, e.g. "1.4.1"; branch and commit beside it
+ *   api        HTTP API semver, GET /api/version, e.g. "27.15.0"
  *   transport  "usb" | "wifi": how this request reached the bar, GET /api/transport
  *   wifi       { state, connected, ssid, address }: GET /api/wifi/status. state is the firmware's word
  *              ("connected", "disconnected", "connecting", ...); ssid and address only while connected.

@@ -4,7 +4,7 @@
 
 See all your Claude Code sessions on the BUSY Bar and approve their requests with the bar's buttons.
 
-You need: a BUSY Bar, Claude Code, and a USB cable.
+You need: a BUSY Bar with firmware 1.4.1 or newer, Claude Code, and a USB cable.
 
 > [!NOTE]
 > **What the installer does.** It installs Node.js if you don't have it (from nodejs.org, Homebrew or winget), installs this plugin with Claude Code's own `claude plugin install`, and sets up the bar over the USB cable: puts the app on it and saves this computer's address and a random password in the app's settings. On Windows it also opens port 8790 in the firewall, so the bar can reach your PC.

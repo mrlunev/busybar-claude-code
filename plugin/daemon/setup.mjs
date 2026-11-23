@@ -149,6 +149,12 @@ export async function setup({ port, bars = [], version, config, saveConfig, path
   }
   const { address, info } = found;
   say(`Bar: ${info.name || info.id} (${info.serial}), firmware ${info.firmware}`);
+  // The app needs HTTP API 27.15 (firmware 1.4.1). A bar that did not say its version gets the benefit of the doubt.
+  const [major, minor] = String(info.api ?? "").split(".").map(Number);
+  if (info.api && !(major > 27 || (major === 27 && minor >= 15))) {
+    say("The app needs firmware 1.4.1 or newer. Update the bar in the BUSY app, then run setup again.");
+    return 1;
+  }
 
   // The addresses the bar will call: this computer on the bar's Wi-Fi, and over the cable.
   const wifi = info.wifi?.connected ? info.wifi.address : null;
@@ -169,7 +175,6 @@ export async function setup({ port, bars = [], version, config, saveConfig, path
     await installApp(address, BUNDLE);
   } catch (err) {
     say(`Could not install the app: ${err.message}`);
-    if (/404/.test(err.message)) say("This bar's firmware has no apps yet. Update it to 1.3.1 or newer in the BUSY app.");
     return 1;
   }
   // A bar set up before the app moved to its catalog id still has the old copy: two apps would show in APPS.

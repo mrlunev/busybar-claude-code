@@ -37,10 +37,4 @@ export const device = {
   async AppsSettingsGet(params: { app_id: string }): Promise<{ values: Record<string, unknown> }> {
     return JSON.parse(await call("GET", `apps/settings?app_id=${params.app_id}`)) as { values: Record<string, unknown> };
   },
-
-  /** The firmware's HTTP API version, e.g. "27.15.0" on 1.4.1. */
-  async ApiVersion(): Promise<string> {
-    const value = (JSON.parse(await call("GET", "version")) as { api_semver?: unknown }).api_semver;
-    return typeof value === "string" ? value : "";
-  },
 };
