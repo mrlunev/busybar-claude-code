@@ -205,7 +205,7 @@ export async function setup({ port, bars = [], version, config, saveConfig, path
   try {
     await launchApp(address, APP_ID);
   } catch (err) {
-    say(`Could not start the app on the bar (${err.message}); open Claude Code in APPS on the bar.`);
+    say(`Could not start the app on the bar (${err.message}); open Claude Code Sessions in APPS on the bar.`);
   }
 
   say("Now press Start on the bar.");

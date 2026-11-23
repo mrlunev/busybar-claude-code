@@ -1,4 +1,4 @@
-# Claude Code on the BUSY Bar: the bar app
+# Claude Code Sessions: the BUSY Bar app
 
 The app for the BUSY Bar, id `app.mrlunev.claude_code`. It long-polls the local server that the `busybar` Claude Code
 plugin runs on the computer, shows the computer's Claude Code sessions on the front display, and sends the answers to
@@ -29,7 +29,7 @@ Messages, first line and second line:
 
 ## Settings
 
-In the bar's web page, Apps, Claude Code. Setup fills in `Computer` (one or more `address:port`, comma-separated, tried
+In the bar's web page, Apps, Claude Code Sessions. Setup fills in `Computer` (one or more `address:port`, comma-separated, tried
 in order) and `Token`. The app reads its settings only when it starts.
 
 ## Build

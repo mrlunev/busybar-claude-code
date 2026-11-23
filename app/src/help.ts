@@ -32,7 +32,6 @@ const TAG_STEP = TAG_H + 2;
 
 // Measured widths.
 const NAME_W = { "Wi-Fi": 25, USB: 17 } as const; // `normal`
-const THEN_ADVANCE = 25; // "then " in `normal`
 const APPS_W = 24; // "Apps" in `bold`
 const SPACE = 5; // around the arrow; a font space would be 6, which pushes the line past 148
 const ARROW_W = 6;
@@ -106,16 +105,16 @@ export function helpElements(addresses: readonly WebAddress[]): HelpElement[] {
     y += TAG_STEP;
   };
 
-  // Not set up, then: open this in a browser, Apps → Claude Code, and follow the guide there.
+  // Not set up, then: open this in a browser, Apps → Claude Code Sessions, and follow the guide there.
+  // The name is in `normal`: in `bold` (118 px) it would not fit after the arrow.
   line("title", "Not set up yet", "bold", WHITE);
   line("open", addresses.length > 0 ? "Open in a browser:" : "Plug in by USB, open:");
   const list = addresses.length > 0 ? addresses.slice(0, 2) : [{ how: "USB", address: "10.0.4.20" } as const];
   list.forEach((a, n) => tag(n, a));
-  const arrowX = THEN_ADVANCE + APPS_W + SPACE;
-  text("then", 0, y, "then", "normal", GREY);
-  text("apps", THEN_ADVANCE, y, "Apps", "bold", WHITE);
+  const arrowX = APPS_W + SPACE;
+  text("apps", 0, y, "Apps", "bold", WHITE);
   picture("arrow", arrowX, y + 3, ARROW, WHITE); // centred on the 7 px capitals
-  text("app", arrowX + ARROW_W + SPACE, y, "Claude Code", "bold", WHITE);
+  text("app", arrowX + ARROW_W + SPACE, y, "Claude Code Sessions", "normal", WHITE);
   y += LINE;
   line("follow", "and follow the guide there");
   return out;

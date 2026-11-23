@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "id": "app.mrlunev.claude_code",
-  "name": "Claude Code",
+  "name": "Claude Code Sessions",
   "version": "0.1.0",
   "api_version": "27.14.0",
   "description": "Your Claude Code sessions on the bar: who is working, who is done, and permission prompts you answer with the bar's buttons.",

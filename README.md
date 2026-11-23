@@ -65,7 +65,7 @@ setup again.
 to the old computer, run setup there again.
 
 **The bar says "Needs setup".** The app on the bar has no password yet, for example when it was installed from the BUSY
-Apps catalog. Its back screen says where to open the bar's web page; there, in Apps → Claude Code, are the install
+Apps catalog. Its back screen says where to open the bar's web page; there, in Apps → Claude Code Sessions, are the install
 commands for Mac and Windows. Run the one for your system with the bar connected by USB.
 
 **The bar says "No computer".** The bar can't reach the computer: it is asleep or off, Claude Code hasn't started since

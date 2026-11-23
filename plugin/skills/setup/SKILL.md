@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Connect Claude Code to a BUSY Bar - find the bar, install the "Claude Code" app on it, and start the bridge. Run once after installing the plugin.
+description: Connect Claude Code to a BUSY Bar - find the bar, install the "Claude Code Sessions" app on it, and start the bridge. Run once after installing the plugin.
 disable-model-invocation: true
 ---
 
