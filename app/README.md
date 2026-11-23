@@ -1,46 +1,90 @@
-# Claude Code on the BUSY Bar: the app
+# Claude Code on the BUSY Bar
 
-The app for the bar, in this folder; the Claude Code plugin it talks to is in [`../plugin`](../plugin). Shows your Claude Code sessions on the BUSY Bar and lets you answer permission prompts with the bar's buttons.
+![Claude Code sessions on the BUSY Bar: a permission prompt answered with the bar's Start button](media/demo.webp)
 
-- **Session list** (what the app opens with): two rows at a time, each a small mascot coloured by the session's state, the project folder (the one the session started in) and the task timer. The wheel moves the cursor and scrolls; the name under the cursor scrolls when it is long; a thin bar on the right shows where you are in a longer list. Start or the wheel button opens the session, Back leaves the app.
-- **One session**, opened from the list: what it is doing now (`Edit client.ts`, `Bash npm test`), how long the current task has been running, and the project folder right after the timer. A blue-grey frame while it works, green once it is done and waiting for you (the time then stops at how long the task took), amber when it asks you something. On green and amber the bottom line takes the frame's tint.
-- **The mascot** stays orange while it works and while it waits for you (green once done). Working, it thinks: looks around, blinks, thought dots rise over its head. Waiting for you, it calls: jumps, waves, stomps, one after another.
-Back returns to the list.
-- **A session that asks you something** (a question, a plan, or the question the Claude desktop app shows with buttons at the end of a turn) turns amber and scrolls the question; in the list it moves to the top with an amber mascot. The bar can only show it: the answer is a new chat message, which hooks cannot send.
-- **Permission prompt:** covers everything else. "Approve?" and the project and command scroll on the first line, Yes / No below (the picked one dark on a bright amber plate), dashes run clockwise around the frame, and the LED blinks amber for as long as the prompt waits. The wheel picks Yes or No, Start (or the wheel button) answers. Back hands the prompt to the terminal: Claude Code then asks there as usual. Several prompts queue up; `+N` shows how many more wait.
-- **Context bar** (optional, in the settings): the bottom edge of the frame fills up with the session's context window.
+See all your Claude Code sessions on the BUSY Bar and approve their requests with the bar's buttons.
 
-## Install
+You need: a BUSY Bar, Claude Code, and a USB cable.
 
-See the [repository's README](../README.md): one command installs Node.js if needed, the Claude Code plugin and this app, and pairs them. You need Claude Code and a BUSY Bar on firmware 1.3.1 or newer (1.4.1 is the current release).
+> [!NOTE]
+> **What the installer does.** It installs Node.js if you don't have it (from nodejs.org, Homebrew or winget), installs this plugin with Claude Code's own `claude plugin install`, and sets up the bar over the USB cable: puts the app on it and saves this computer's address and a random password in the app's settings. On Windows it also opens port 8790 in the firewall, so the bar can reach your PC.
+>
+> **What runs afterwards.** A small local server on your computer receives events from Claude Code and shows them on the bar: project folder name, what Claude is doing (`Edit client.ts`), timers, and the command it asks permission for. It answers only your bar, and only with that password.
+>
+> **What it never does.** It doesn't send anything to the internet, and it doesn't touch your Claude login or API keys. From session logs it takes only the project folder and how full the context is.
+>
+> Read it first if you like: [install.sh](install.sh), [install.ps1](install.ps1), [the server](plugin/daemon). Or ask Claude Code to review them before you run anything.
 
-## How it works
+## How to use
 
-[`../plugin/`](../plugin) is a Claude Code plugin (no `package.json` on purpose: Claude Code would otherwise install the app's npm dependencies into the plugin):
+- **Start**: opens a session; on a prompt, sends the answer.
+- **Wheel turn**: moves through the sessions; on a permission prompt, picks Yes or No.
+- **Wheel press**: opens a session; on a prompt, sends the answer.
+- **Back**: returns to the list; on a prompt, hands it back to the terminal; from the list, closes the app.
 
-- `daemon/claude-bar-daemon.mjs` runs on the computer (Node 20+, no dependencies). Claude Code posts every session event to it through the plugin's `http` hooks (`hooks/hooks.json`). A `PermissionRequest` hook is held open until the bar answers (or the session moves on, or 590 s pass) and is then answered with `allow`, `deny`, or no decision at all, which leaves the prompt to the terminal. The same request arriving twice (old hooks in `~/.claude/settings.json` plus the plugin's) makes one prompt; setup run from the plugin removes the old hooks, with a backup.
-- `daemon/setup.mjs` is setup, uninstall and `--ensure`; `daemon/bar-api.mjs` talks to the bar's HTTP API (install, launch, settings); `daemon/mdns.mjs` finds bars on the network (they announce `busybar-<usb mac>._http._tcp`), in plain Node so it works on Windows too.
-- `release/app.mrlunev.claude_code.tgz` is this app, built. Rebuild it with `npm run release` here before committing app changes (`tools/release.mjs` repacks it as plain ustar: macOS tar otherwise records your user name and file attributes in it and adds `._*` files).
+## macOS
 
-The app long-polls `GET /state` on the daemon (a reply comes as soon as something changes, or after 3 s) and redraws only the elements that changed. Running timers are `countdown` elements, so the bar counts them itself. Answers go to `POST /answer`. The `host` setting may list several `address:port` entries; the app sticks with the one that answers. Its screens say what is wrong: "Run setup" (no token), "Wrong token", "Not paired" (the daemon doesn't know this bar's address), "No computer", "Update app" (the daemon is newer).
+1. Connect the bar to your Mac with the USB cable.
+2. Open Terminal and paste:
+   ```
+   curl -fsSL https://raw.githubusercontent.com/mrlunev/busybar-claude-code/main/install.sh | bash
+   ```
+   If it asks for your Mac password, type it and press Return.
+3. When the bar shows **Approve? Setup**, press **Start** on the bar.
 
-An "allow" runs a command on the computer, so the daemon serves the bar only with its token and only to known bar addresses (`bars` in `~/.config/busy-claude-bar/config.json`). When the router gives the paired bar a new address, a request with the right token from it is let in once mDNS confirms the address belongs to that bar. Hooks are accepted from the computer itself only.
+Done. Unplug the cable and restart Claude Code.
 
-## Development
+## Windows
 
-```sh
-npm install
-npm run daemon                          # the daemon in the foreground, with its log
-npm run daemon -- --demo                # three made-up sessions and a prompt every 20 s, for filming
-npm run build && npm run app:install && npm run app:run
-```
+1. Connect the bar to your PC with the USB cable.
+2. Open PowerShell and paste:
+   ```
+   irm https://raw.githubusercontent.com/mrlunev/busybar-claude-code/main/install.ps1 | iex
+   ```
+   When Windows asks to allow changes, click **Yes**.
+3. When the bar shows **Approve? Setup**, press **Start** on the bar.
 
-Without the plugin, `node ../plugin/daemon/claude-bar-daemon.mjs --install-hooks` puts the same hooks into `~/.claude/settings.json` (after a backup); `--print-hooks` shows them first. Sessions started before do not see new hooks until restarted.
+Done. Unplug the cable and restart Claude Code.
 
-`npm run images` regenerates the frames and mascots in `src/images/` and the two animations in `src/animations/` from `tools/make-images.mjs`; `tools/pack.py` encodes the animation frames with the firmware's `seq2anim.py` (needs a [busybar-firmware](https://github.com/busy-app/busybar-firmware) checkout next to this repository, or its path in `FIRMWARE`, and Pillow). Stop the app before reinstalling it (`npm run app:stop`): the firmware can't replace an app whose animation is playing.
+## Using it
 
-The app talks to the bar it runs on over plain `fetch` (`shared/device.ts`), not through busy-lib's `BusyBar` client, whose 3 s timeout relies on `AbortController`, a stub in the firmware.
+- The wheel scrolls through your sessions, **Start** opens one, **Back** goes back.
+- When Claude asks for permission, the bar blinks. Turn the wheel to pick **Yes** or **No**, then press **Start**.
+- Something wrong? The bar says what. Run the same command again to fix most of it.
+- Only sessions that run on this computer show up. Cloud sessions and sessions on a remote machine over SSH don't.
+
+## FAQ
+
+Almost everything is fixed the same way: connect the bar with the USB cable and run the install command for your
+system again (or `/busybar:setup` in Claude Code). It keeps what already works and fixes the rest.
+
+**The bar says "Wrong token" or "Not paired".** The bar and the computer no longer share the same password. That
+happens when setup ran on another computer since, or this computer lost its settings (`~/.config/busy-claude-bar`).
+Run setup again.
+
+**A new computer.** Install on it as above. The bar works with one computer at a time, the last one set up. To go back
+to the old computer, run setup there again.
+
+**The bar says "Run setup".** The app on the bar has no password yet, for example when it was installed from the BUSY
+Apps catalog. Run setup.
+
+**The bar says "No computer".** The bar can't reach the computer: it is asleep or off, Claude Code hasn't started since
+the computer restarted (the server starts with Claude Code), or the bar and the computer are on different Wi-Fi
+networks. Start Claude Code. If the bar still says it, run setup with the cable: it says what is in the way.
+
+**The bar says "Update app".** The plugin was updated and the app on the bar is older. Run setup.
+
+**Still stuck?** [Open an issue](https://github.com/mrlunev/busybar-claude-code/issues) and say what the bar shows.
+
+## Remove
+
+Run `/plugin uninstall busybar` in Claude Code, then delete the app on the bar in the BUSY app.
+
+## Source
+
+- [`app/`](app): the app for the bar (TypeScript, built with `busy-cli build`); see its [README](app/README.md).
+- [`plugin/`](plugin): the Claude Code plugin with the local server; `plugin/release/` holds the built app that setup puts on the bar.
 
 ## License
 
-MIT, see [LICENSE](../LICENSE). Claude and Claude Code are trademarks of Anthropic, PBC. This app is not made by or affiliated with Anthropic.
+MIT, see [LICENSE](LICENSE). Claude and Claude Code are trademarks of Anthropic, PBC. This project is not made by or affiliated with Anthropic.

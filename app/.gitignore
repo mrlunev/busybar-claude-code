@@ -16,3 +16,10 @@ dist
 .DS_Store
 *.sw?
 build
+
+# Kept out of the public repository by BUSY Bar Emulator
+.busy/
+submission/
+._*
+Thumbs.db
+desktop.ini
