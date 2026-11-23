@@ -65,13 +65,20 @@ function Install-BusyBarClaude {
   $claude = Find-Claude
   $daemon = $null
   if ($claude) {
-    Say 'Installing the busybar plugin for Claude Code...'
     & $claude plugin marketplace add $Repo *> $null
     if ($LASTEXITCODE -ne 0) { & $claude plugin marketplace update busybar *> $null }
-    & $claude plugin install busybar@busybar | Out-Host
-    if ($LASTEXITCODE -ne 0) { Fail 'Claude Code could not install the plugin.' }
-    # Installed before: install leaves the old version, update brings the new one.
-    & $claude plugin update busybar@busybar *> $null
+    # Installed before: install would leave the old version, update brings the new one. Windows PowerShell turns a
+    # native command's stderr into errors, which 'Stop' would make fatal, so the list is read with 'Continue'.
+    $listed = & { $ErrorActionPreference = 'Continue'; & $claude plugin list 2>&1 } | Out-String
+    if ($listed -match 'busybar@busybar') {
+      Say 'Updating the busybar plugin for Claude Code...'
+      & $claude plugin update busybar@busybar | Out-Host
+      if ($LASTEXITCODE -ne 0) { Fail 'Claude Code could not update the plugin.' }
+    } else {
+      Say 'Installing the busybar plugin for Claude Code...'
+      & $claude plugin install busybar@busybar | Out-Host
+      if ($LASTEXITCODE -ne 0) { Fail 'Claude Code could not install the plugin.' }
+    }
     $daemon = Get-ChildItem "$env:USERPROFILE\.claude\plugins\cache\busybar\busybar\*\daemon\claude-bar-daemon.mjs" -ErrorAction SilentlyContinue |
       Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object FullName
   }
