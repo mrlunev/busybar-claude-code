@@ -56,7 +56,7 @@ export async function ensure({ port, version, configDir, restart = false }) {
   if (process.platform === "win32") {
     startOnWindows(logFile);
   } else {
-    const log = openSync(logFile, "a");
+    const log = openSync(logFile, "a", 0o600);
     spawn(process.execPath, [DAEMON], { detached: true, stdio: ["ignore", log, log] }).unref();
   }
   for (let i = 0; i < 30; i++) {

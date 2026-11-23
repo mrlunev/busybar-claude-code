@@ -25,7 +25,7 @@
 // No dependencies; Node 20+.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { closeSync, copyFileSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -44,7 +44,7 @@ const flag = (name) => args.includes(name);
 // Started without a console (on Windows, see startOnWindows in setup.mjs), the daemon writes its log itself.
 const LOG_FILE = option("--log", null);
 if (LOG_FILE) {
-  const out = createWriteStream(LOG_FILE, { flags: "a" });
+  const out = createWriteStream(LOG_FILE, { flags: "a", mode: 0o600 });
   console.log = console.error = (...parts) => out.write(format(...parts) + "\n");
 }
 
@@ -696,6 +696,20 @@ server.headersTimeout = 10_000;
 
 const paths = { configDir: CONFIG_DIR, settings: SETTINGS_PATH };
 
+/**
+ * The log is the user's alone, and the token never goes into it: daemons up to 0.1.4 wrote it there at start, so
+ * an old copy is taken out of the log the first time a newer one starts.
+ */
+function scrubLog(file, token) {
+  try {
+    const text = readFileSync(file, "utf8");
+    if (token && text.includes(token)) writeFileSync(file, text.split(token).join("(hidden)"));
+    chmodSync(file, 0o600);
+  } catch {
+    // No log yet, or not ours to change: nothing to do.
+  }
+}
+
 if (flag("--ensure")) {
   // Run by a SessionStart hook: whatever it prints would land in Claude's context, so it prints nothing.
   await ensure({ port: PORT, version: VERSION, configDir: CONFIG_DIR }).catch(() => {});
@@ -715,8 +729,9 @@ if (flag("--ensure")) {
       .flat()
       .filter((a) => a && a.family === "IPv4" && !a.internal)
       .map((a) => `${a.address}:${PORT}`);
+    scrubLog(LOG_FILE ?? path.join(CONFIG_DIR, "daemon.log"), config.token);
     console.log(`Claude Code bar daemon on ${addresses.join(", ")}`);
-    console.log(`bar app settings: Computer = one of the addresses above, Token = ${config.token}`);
+    console.log(`bar app settings: Computer = one of the addresses above, Token = "token" in ${CONFIG_PATH}`);
     console.log(`bars allowed from: ${[...BAR_ADDRESSES].join(", ")} (config: ${CONFIG_PATH})`);
     if (flag("--demo")) {
       startDemo();
