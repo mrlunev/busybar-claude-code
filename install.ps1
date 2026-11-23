@@ -102,4 +102,8 @@ function Install-BusyBarClaude {
   Say 'Restart Claude Code, and your sessions appear on the bar.'
 }
 
-try { Install-BusyBarClaude } catch { if ("$_" -ne 'busybar-setup-failed') { Write-Host "$_" -ForegroundColor Red } }
+# `claude` and Node print UTF-8 (claude marks success with a check sign); the console's own code page (437, 866 and
+# the like) would show it garbled. Set for this run, then given back.
+$BusyBarEncoding = [Console]::OutputEncoding
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
+try { Install-BusyBarClaude } catch { if ("$_" -ne 'busybar-setup-failed') { Write-Host "$_" -ForegroundColor Red } } finally { try { [Console]::OutputEncoding = $BusyBarEncoding } catch {} }
